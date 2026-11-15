@@ -4,14 +4,7 @@ on:
   push:
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: macos-14
-            arch: apple-silicon
-          - os: macos-15-intel
-            arch: intel
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,8 +13,8 @@ jobs:
       - run: pip install PyQt6 pyinstaller
       - run: pyinstaller --windowed --name Tunnelo tunnelo.py
       - run: codesign --force --deep -s - dist/Tunnelo.app
-      - run: hdiutil create -volname Tunnelo -srcfolder dist/Tunnelo.app -ov -format UDZO "Tunnelo-${{ matrix.arch }}.dmg"
+      - run: hdiutil create -volname Tunnelo -srcfolder dist/Tunnelo.app -ov -format UDZO Tunnelo-apple-silicon.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: "Tunnelo-${{ matrix.arch }}"
-          path: "Tunnelo-${{ matrix.arch }}.dmg"
+          name: Tunnelo-apple-silicon
+          path: Tunnelo-apple-silicon.dmg
