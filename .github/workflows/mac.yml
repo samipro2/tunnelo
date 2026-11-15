@@ -1,0 +1,20 @@
+name: build-mac
+on: [workflow_dispatch, push]
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14,       arch: apple-silicon }   # M1/M2/M3/M4 Macs
+          - { os: macos-15-intel, arch: intel }           # older Intel Macs
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install PyQt6 pyinstaller
+      - run: pyinstaller --windowed --name Tunnelo tunnelo.py
+      - run: codesign --force --deep -s - dist/Tunnelo.app
+      - run: hdiutil create -volname Tunnelo -srcfolder dist/Tunnelo.app -ov -format UDZO Tunnelo-${{ matrix.arch }}.dmg
+      - uses: actions/upload-artifact@v4
+        with: { name: Tunnelo-${{ matrix.arch }}, path: Tunnelo-${{ matrix.arch }}.dmg }
