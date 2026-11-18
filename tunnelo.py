@@ -16,6 +16,7 @@ import platform
 import re
 import shutil
 import socket
+import ssl
 import stat
 import subprocess
 import sys
@@ -149,6 +150,15 @@ def keep_awake(on: bool) -> None:
             pass
 
 
+def ssl_context() -> ssl.SSLContext:
+    """Trusted CA list that also works inside a macOS app bundle (python.org builds ship none)."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
 def make_icon(size: int = 256) -> QIcon:
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
@@ -199,20 +209,29 @@ class DownloadWorker(QThread):
             if self._cancel:
                 return
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}/1.0"})
-                with urllib.request.urlopen(req, timeout=30) as r, open(tmp, "wb") as f:
-                    total = int(r.headers.get("Content-Length") or 0)
-                    got = 0
-                    while True:
-                        if self._cancel:
-                            return
-                        chunk = r.read(65536)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        got += len(chunk)
-                        if total:
-                            self.progress.emit(int(got * 100 / total))
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}/1.0"})
+                    with urllib.request.urlopen(req, timeout=30, context=ssl_context()) as r, open(tmp, "wb") as f:
+                        total = int(r.headers.get("Content-Length") or 0)
+                        got = 0
+                        while True:
+                            if self._cancel:
+                                return
+                            chunk = r.read(65536)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            got += len(chunk)
+                            if total:
+                                self.progress.emit(int(got * 100 / total))
+                except Exception:
+                    # Fallback: the OS's own curl (uses the system certificate store)
+                    curl = shutil.which("curl")
+                    if not curl:
+                        raise
+                    self.progress.emit(0)
+                    subprocess.run([curl, "-fsSL", "--retry", "2", "--connect-timeout", "20",
+                                    "-o", str(tmp), url], check=True, timeout=300, **popen_kwargs())
                 if asset.endswith(".tgz"):
                     with tarfile.open(tmp) as tf:
                         member = next(m for m in tf.getmembers() if m.name.endswith("cloudflared"))
@@ -287,7 +306,7 @@ class TunnelWorker(QThread):
     def _public_ok(url: str) -> bool:
         try:
             req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": f"{APP_NAME}/1.0"})
-            urllib.request.urlopen(req, timeout=10).close()
+            urllib.request.urlopen(req, timeout=10, context=ssl_context()).close()
             return True
         except urllib.error.HTTPError as e:
             return e.code != 530          # 530 = tunnel is gone; other codes mean the edge answered
