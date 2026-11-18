@@ -10,7 +10,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install PyQt6 pyinstaller
+      - run: pip install PyQt6 pyinstaller certifi
       - run: pyinstaller --windowed --name Tunnelo tunnelo.py
       - run: codesign --force --deep -s - dist/Tunnelo.app
       - run: hdiutil create -volname Tunnelo -srcfolder dist/Tunnelo.app -ov -format UDZO Tunnelo-apple-silicon.dmg
